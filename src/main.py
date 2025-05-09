@@ -1,6 +1,9 @@
 import json
 import csv
 import argparse
+import folium
+from folium.plugins import HeatMap, HeatMapWithTime, FastMarkerCluster, Draw
+from statistics import median
 
 def load_location_data(file_path):
     """Load and return the data from a Google Timeline JSON file."""
@@ -19,7 +22,7 @@ def load_location_data(file_path):
         # skip other segments (activity, visit, timelineMemory) 
         if "timelinePath" not in item:
             continue
-        
+        # from timelinePath segment, grab time, lat, and lon from all points
         for location in item["timelinePath"]:
             coordinate = location["point"].replace("°", "").split(", ")
             locations.append({
@@ -47,8 +50,81 @@ def write_to_csv(locations, file_path):
     print(f"Wrote location data to: {file_path}")
 
 
+def create_interactive_map(locations, raw_points=False):
+    """Create html file with interactive map displaying the location data."""
+
+    avg_lat = median(float(point["lat"]) for point in locations)
+    avg_lon = median(float(point["lng"]) for point in locations)
+
+    map = folium.Map(
+        location=[avg_lat, avg_lon],
+        zoom_start=5,
+        prefer_canvas=True, #use canvas rather than DOM for better performance with many points
+    )
+
+    # create circle markers for all data points
+    if raw_points:
+        fg_points = folium.FeatureGroup("all points")
+        for point in locations:
+            fg_points.add_child(folium.CircleMarker(
+                (float(point["lat"]), float(point["lng"])),
+                radius=1,
+                popup=point["time"]
+            ))
+        map.add_child(fg_points)
+
+
+    points = [(float(point["lat"]), float(point["lng"])) for point in locations]
+
+    # create line through all data points
+    # fg_lines = folium.FeatureGroup(name="location line").add_child(
+    #     folium.PolyLine(points)
+    # )
+    # map.add_child(fg_lines)
+
+    # create clustered cicrle markers, that are fast to genereate
+    # callback = ('function (row) {' 
+    #             'var circle = L.circleMarker(new L.LatLng(row[0], row[1]), {color: "red",  radius: 2});'
+    #             'return circle};')
+    # FastMarkerCluster(points, name="clusters", callback=callback).add_to(map)
+
+    # create heatmap from all data points
+    HeatMap(
+        points,
+        name="heatmap",
+        min_opacity=0.6,
+        radius=4,
+        blur=4,
+        gradient=({"0.4": "blue", "0.6": "cyan", "0.7": "lime", "0.8": "yellow", "1.0": "red"}),
+    ).add_to(map)
+
+    # create scrolling "heatmap" from all data points
+    # points needs to be a list of list of points
+    points = []
+    for point in locations:
+        points.append([[float(point["lat"]), float(point["lng"])]])
+    HeatMapWithTime(
+        points,
+        index=[point["time"] for point in locations],
+        name="heatmap with time",
+        radius=15,
+        min_speed=10,
+        max_speed=200,
+        speed_step=10,
+        min_opacity=0.9
+    ).add_to(map)
+
+    Draw().add_to(map)
+
+    folium.LayerControl().add_to(map)
+
+    map.save("map/index.html")
+    print(f"Map created in: map/index.html")
+
+
 def main():
     
+    # setup command-line parsing
     parser = argparse.ArgumentParser(description="Convert Google Timeline data to a simple CSV file.")
     parser.add_argument("input_json",
                         nargs="?",
@@ -58,10 +134,14 @@ def main():
                         default="timeline.csv",
                         help="Path to output CSV file. Overwrites existing file. Default: timeline.csv"
                         )
+    parser.add_argument("-r", "--raw_points",
+                        action="store_true")
     args = parser.parse_args()
 
     locations = load_location_data(args.input_json)
     write_to_csv(locations, args.output_csv)
+
+    create_interactive_map(locations, args.raw_points)
 
 
 if __name__ == "__main__":
