@@ -1,3 +1,4 @@
+import os
 import json
 import csv
 import argparse
@@ -7,9 +8,16 @@ from statistics import median
 
 def load_location_data(file_path):
     """Load and return the data from a Google Timeline JSON file."""
-    with open(file_path) as file:
-        # deserialize json file to a python object
-        data = json.load(file)
+    try:
+        with open(file_path, encoding="utf-8") as file:
+            # deserialize json file to a python object
+            data = json.load(file)
+    except json.JSONDecodeError as e:
+        print(f"JSON decoding failed:\n{e}")
+        raise SystemExit # same as sys.exit()
+
+    if "semanticSegments" not in data:
+        raise Exception("Timeline file doesn't contain any semantic segments.")
 
     print(f"Top-level keys: {data.keys()}")
     print(f"Number of 'semantic segments': {len(data['semanticSegments'])}")
@@ -39,9 +47,9 @@ def load_location_data(file_path):
     return locations
 
 
-def write_to_csv(locations, file_path):
+def write_to_csv(locations:list[dict], file_path:str):
     """Write location data to CSV."""
-    if not file_path.endswith(".csv"):
+    if not file_path.endswith((".csv", ".CSV")):
         file_path += ".csv"
     with open(file_path, 'w', newline='') as csvfile:
         csvwriter = csv.DictWriter(csvfile, locations[0].keys())
@@ -118,6 +126,8 @@ def create_interactive_map(locations, raw_points=False):
 
     folium.LayerControl().add_to(map)
 
+    if not os.path.exists("map"):
+        os.makedirs("map")
     map.save("map/index.html")
     print(f"Map created in: map/index.html")
 
@@ -135,8 +145,16 @@ def main():
                         help="Path to output CSV file. Overwrites existing file. Default: timeline.csv"
                         )
     parser.add_argument("-r", "--raw_points",
-                        action="store_true")
+                        action="store_true",
+                        help="Draw all locations as points on the map. Can be slow to generate with many locations.")
     args = parser.parse_args()
+
+    if not os.path.isfile(args.input_json):
+        print(f"'{os.path.abspath(args.input_json)}' file not found.")
+        return
+    if os.path.splitext(args.input_json)[1].lower() != ".json":
+        print(f"Input file is not a JSON file: '{args.input_json}'")
+        return
 
     locations = load_location_data(args.input_json)
     write_to_csv(locations, args.output_csv)
