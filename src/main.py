@@ -2,11 +2,12 @@ import os
 import json
 import csv
 import argparse
+from datetime import date
 import folium
 from folium.plugins import HeatMap, HeatMapWithTime, FastMarkerCluster, Draw
 from statistics import median
 
-def load_location_data(file_path):
+def load_location_data(file_path, start_date, end_date):
     """Load and return the data from a Google Timeline JSON file."""
     try:
         with open(file_path, encoding="utf-8") as file:
@@ -23,6 +24,14 @@ def load_location_data(file_path):
     print(f"Number of 'semantic segments': {len(data['semanticSegments'])}")
     # print(f"First location point: {data['semanticSegments'][0]['timelinePath']}")
 
+    start = date.fromordinal(1)
+    end = date.today()
+    if start_date:
+        start = date.fromisoformat(start_date)
+    if end_date:
+        end = date.fromisoformat(end_date)
+    print(f"Extracting data from {start} to {end}")
+
     count = 0
     locations = []
 
@@ -32,6 +41,8 @@ def load_location_data(file_path):
             continue
         # from timelinePath segment, grab time, lat, and lon from all points
         for location in item["timelinePath"]:
+            if not (start <= date.fromisoformat(location["time"].split("T")[0]) <= end):
+                continue
             coordinate = location["point"].replace("°", "").split(", ")
             locations.append({
                 "time": location["time"],
@@ -40,9 +51,10 @@ def load_location_data(file_path):
             })
         count += 1 
 
-    print(f"Number of 'timelinePath' segments: {count}")
-    print(f"Number of location data points: {len(locations)}")
-    print(f"First data point:\n{locations[0]}")
+    print("Extracted data:")
+    print(f"- Number of 'timelinePath' segments: {count}")
+    print(f"- Number of location data points: {len(locations)}")
+    print(f"- First data point:\n{locations[0]}")
 
     return locations
 
@@ -119,7 +131,7 @@ def create_interactive_map(locations, raw_points=False):
         min_speed=10,
         max_speed=200,
         speed_step=10,
-        min_opacity=0.9
+        min_opacity=0.9, # type: ignore
     ).add_to(map)
 
     Draw().add_to(map)
@@ -144,6 +156,10 @@ def main():
                         default="timeline.csv",
                         help="Path to output CSV file. Overwrites existing file. Default: timeline.csv"
                         )
+    parser.add_argument("-s", "--start_date",
+                        help="Filter extracted data to this date and after. Must be YYYY-MM-DD.")
+    parser.add_argument("-e", "--end_date",
+                        help="Filter extracted data to this date and before. Must be YYYY-MM-DD.")                    
     parser.add_argument("-r", "--raw_points",
                         action="store_true",
                         help="Draw all locations as points on the map. Can be slow to generate with many locations.")
@@ -156,7 +172,7 @@ def main():
         print(f"Input file is not a JSON file: '{args.input_json}'")
         return
 
-    locations = load_location_data(args.input_json)
+    locations = load_location_data(args.input_json, args.start_date, args.end_date)
     write_to_csv(locations, args.output_csv)
 
     create_interactive_map(locations, args.raw_points)
