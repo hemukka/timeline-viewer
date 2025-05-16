@@ -30,7 +30,6 @@ def load_location_data(file_path, start_date, end_date):
         start = date.fromisoformat(start_date)
     if end_date:
         end = date.fromisoformat(end_date)
-    print(f"Extracting data from {start} to {end}")
 
     count = 0
     locations = []
@@ -51,10 +50,14 @@ def load_location_data(file_path, start_date, end_date):
             })
         count += 1 
 
+    print(f"Number of 'timelinePath' segments: {count}")
     print("Extracted data:")
-    print(f"- Number of 'timelinePath' segments: {count}")
+    print(f"- Date range from {start} to {end}")
     print(f"- Number of location data points: {len(locations)}")
-    print(f"- First data point:\n{locations[0]}")
+    if len(locations) > 0:
+        print(f"- First data point:\n{locations[0]}")
+    else:
+        raise SystemExit("Nothing extracted, exiting program")
 
     return locations
 
